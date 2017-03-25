@@ -156,6 +156,12 @@ RCConfiguration::save_state()
 }
 
 void
+RCConfiguration::save_instant_xml ()
+{
+	Stateful::save_instant_xml (user_config_directory (), true);
+}
+
+void
 RCConfiguration::add_instant_xml(XMLNode& node)
 {
 	Stateful::add_instant_xml (node, user_config_directory ());

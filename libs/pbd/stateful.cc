@@ -52,6 +52,8 @@ Stateful::Stateful ()
 	, _instant_xml (0)
 	, _properties (new OwnedPropertyList)
 	, _stateful_frozen (0)
+	, _instant_save_timer (0)
+	, _need_instant_save (0)
 {
 }
 
@@ -111,18 +113,63 @@ Stateful::save_extra_xml (const XMLNode& node)
 }
 
 void
-Stateful::add_instant_xml (XMLNode& node, const std::string& directory_path)
+Stateful::save_instant_xml (const std::string& directory_path, bool save_now)
 {
-#ifndef NDEBUG
-	const int64_t save_start_time = g_get_monotonic_time();
-#endif
-	if (!Glib::file_test (directory_path, Glib::FILE_TEST_IS_DIR)) {
-		if (g_mkdir_with_parents (directory_path.c_str(), 0755) != 0) {
-			error << string_compose(_("Error: could not create directory %1"), directory_path) << endmsg;
-			return;
-		}
+	if (!_instant_xml) {
+		return;
+	}
+	Glib::Threads::Mutex::Lock lm (_instance_save_lock);
+	if (save_now ) {
+		g_atomic_int_set (const_cast<gint*>(&_need_instant_save), 1);
 	}
 
+	while (g_atomic_int_compare_and_exchange (const_cast<gint*>(&_need_instant_save), 1, 0)) {
+		// save
+
+#ifndef NDEBUG
+		const int64_t save_start_time = g_get_monotonic_time();
+#endif
+
+		if (!Glib::file_test (directory_path, Glib::FILE_TEST_IS_DIR)) {
+			if (g_mkdir_with_parents (directory_path.c_str(), 0755) != 0) {
+				error << string_compose(_("Error: could not create directory %1"), directory_path) << endmsg;
+				return;
+			}
+		}
+
+		std::string instant_xml_path = Glib::build_filename (directory_path, "instant.xml");
+
+		XMLTree tree;
+		tree.set_filename(instant_xml_path);
+
+
+		/* Important: the destructor for an XMLTree deletes
+			 all of its nodes, starting at _root. We therefore
+			 cannot simply hand it our persistent _instant_xml
+			 node as its _root, because we will lose it whenever
+			 the Tree goes out of scope.
+
+			 So instead, copy the _instant_xml node (which does
+			 a deep copy), and hand that to the tree.
+			 */
+
+		XMLNode* copy = new XMLNode (*_instant_xml);
+		tree.set_root (copy);
+
+		if (!tree.write()) {
+			error << string_compose(_("Error: could not write %1"), instant_xml_path) << endmsg;
+		}
+#ifndef NDEBUG
+		const int64_t elapsed_time_us = g_get_monotonic_time() - save_start_time;
+		cerr << "saved '"<< instant_xml_path << "' in " << fixed << setprecision (1) << elapsed_time_us / 1000. << " ms\n";
+#endif
+
+	}
+}
+
+void
+Stateful::add_instant_xml (XMLNode& node, const std::string& directory_path, bool save_now)
+{
 	if (_instant_xml == 0) {
 		_instant_xml = new XMLNode ("instant");
 	}
@@ -130,31 +177,19 @@ Stateful::add_instant_xml (XMLNode& node, const std::string& directory_path)
 	_instant_xml->remove_nodes_and_delete (node.name());
 	_instant_xml->add_child_copy (node);
 
-	std::string instant_xml_path = Glib::build_filename (directory_path, "instant.xml");
 
-	XMLTree tree;
-	tree.set_filename(instant_xml_path);
-
-	/* Important: the destructor for an XMLTree deletes
-	   all of its nodes, starting at _root. We therefore
-	   cannot simply hand it our persistent _instant_xml
-	   node as its _root, because we will lose it whenever
-	   the Tree goes out of scope.
-
-	   So instead, copy the _instant_xml node (which does
-	   a deep copy), and hand that to the tree.
-	*/
-
-	XMLNode* copy = new XMLNode (*_instant_xml);
-	tree.set_root (copy);
-
-	if (!tree.write()) {
-		error << string_compose(_("Error: could not write %1"), instant_xml_path) << endmsg;
+	if (save_now) {
+		save_instant_xml (directory_path, true);
+		return;
 	}
-#ifndef NDEBUG
-	const int64_t elapsed_time_us = g_get_monotonic_time() - save_start_time;
-	cerr << "saved '"<< instant_xml_path << "' in " << fixed << setprecision (1) << elapsed_time_us / 1000. << " ms\n";
-#endif
+
+	g_atomic_int_set (const_cast<gint*>(&_need_instant_save), 1);
+
+	if (!_instant_save_timer) {
+		_instant_save_timer = new StandardTimer (30000);
+		_instant_save_connection = _instant_save_timer->connect (
+				sigc::bind (sigc::mem_fun (*this, &Stateful::save_instant_xml), directory_path, false));
+	}
 }
 
 XMLNode *

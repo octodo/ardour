@@ -497,6 +497,8 @@ Session::~Session ()
 #ifdef PT_TIMING
 	ST.dump ("ST.dump");
 #endif
+	Stateful::save_instant_xml (_path, true);
+	Config->save_instant_xml ();
 	destroy ();
 }
 

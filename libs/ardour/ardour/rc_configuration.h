@@ -51,6 +51,7 @@ class LIBARDOUR_API RCConfiguration : public PBD::Configuration
 	/// calls Stateful::*instant_xml methods using
 	/// ARDOUR::user_config_directory for the directory argument
 	void add_instant_xml (XMLNode&);
+	void save_instant_xml ();
 	XMLNode * instant_xml (const std::string& str);
 
 	XMLNode* control_protocol_state () { return _control_protocol_state; }

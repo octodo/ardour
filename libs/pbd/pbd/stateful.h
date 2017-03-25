@@ -29,6 +29,7 @@
 #include "pbd/xml++.h"
 #include "pbd/property_basics.h"
 #include "pbd/signals.h"
+#include "pbd/timer.h"
 
 class XMLNode;
 
@@ -105,7 +106,7 @@ class LIBPBD_API Stateful {
 
   protected:
 
-	void add_instant_xml (XMLNode&, const std::string& directory_path);
+	void add_instant_xml (XMLNode&, const std::string& directory_path, bool save_now = false);
 	XMLNode *instant_xml (const std::string& str, const std::string& directory_path);
 	void add_properties (XMLNode &);
 
@@ -132,6 +133,7 @@ class LIBPBD_API Stateful {
 	virtual void mid_thaw (const PropertyChange&) { }
 
 	bool regenerate_xml_or_string_ids () const;
+	void save_instant_xml (const std::string& directory_path, bool save_now);
 
   private:
 	friend struct ForceIDRegeneration;
@@ -140,6 +142,11 @@ class LIBPBD_API Stateful {
 	gint     _stateful_frozen;
 
 	static void set_regenerate_xml_and_string_ids_in_this_thread (bool yn);
+
+	sigc::connection _instant_save_connection;
+	Glib::Threads::Mutex _instance_save_lock;
+	StandardTimer* _instant_save_timer;
+	gint _need_instant_save; /* atomic */
 };
 
 } // namespace PBD

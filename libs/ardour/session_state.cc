@@ -909,6 +909,9 @@ Session::save_state (string snapshot_name, bool pending, bool switch_to_snapshot
 	const int64_t elapsed_time_us = g_get_monotonic_time() - save_start_time;
 	cerr << "saved state in " << fixed << setprecision (1) << elapsed_time_us / 1000. << " ms\n";
 #endif
+
+	Stateful::save_instant_xml (_path, true);
+	Config->save_instant_xml ();
 	return 0;
 }
 
