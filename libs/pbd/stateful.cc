@@ -59,6 +59,8 @@ Stateful::Stateful ()
 
 Stateful::~Stateful ()
 {
+	_instant_save_connection.disconnect ();
+	delete _instant_save_timer;
 	delete _properties;
 
 	// Do not delete _extra_xml.  The use of add_child_nocopy()
